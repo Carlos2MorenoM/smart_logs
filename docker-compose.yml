@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  #RabbitMQ
+  # RabbitMQ
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: rabbitmq
@@ -12,7 +12,7 @@ services:
       - "15672:15672"
     restart: always
 
-  #Log Ingestor
+  # Log Ingestor
   log_ingestor:
     build: ./log_ingestor
     container_name: log_ingestor
@@ -22,10 +22,40 @@ services:
       - rabbitmq # RabbitMQ start first
     restart: always
 
-  #Log Processor
+  # ElasticSearch Service
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data # Data persistence volume
+    restart: always
+
+  # Kibana service
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    restart: always
+
+  # Log Processor
   log_processor:
     build: ./log_processor
     container_name: log_processor
     depends_on:
       - rabbitmq # RabbitMQ start first
+      - elasticsearch
     restart: always
+
+# Defines volume for data persistence
+volumes:
+  es_data:
