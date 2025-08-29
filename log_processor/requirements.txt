@@ -1,2 +1,2 @@
 pika
-elasticsearch
+elasticsearch==8.11.0
