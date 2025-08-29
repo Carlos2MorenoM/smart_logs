@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  #RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      # Port AMQP
+      - "5672:5672"
+      # Port web interface
+      - "15672:15672"
+    restart: always
+
+  #Log Ingestor
+  log_ingestor:
+    build: ./log_ingestor
+    container_name: log_ingestor
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq # RabbitMQ start first
+    restart: always
+
+  #Log Processor
+  log_processor:
+    build: ./log_processor
+    container_name: log_processor
+    depends_on:
+      - rabbitmq # RabbitMQ start first
+    restart: always
