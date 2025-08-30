@@ -20,7 +20,10 @@ def callback(ch, method, properties, body):
         log_entry = json.loads(body)
         print(f"✅ New log received and processed: {log_entry}")
 
-        es_client.index(index="logs", document=log_entry)
+        document_id = log_entry.pop('log_id', None)
+
+        es_client.index(index="logs", id=document_id, document=log_entry)
+
         print("📦 Log stored on Elasticsearch")
 
         # Notify RabbitMQ message was processed
