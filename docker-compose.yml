@@ -56,5 +56,14 @@ services:
       - elasticsearch
     restart: always
 
+  # Ingestion script
+  ingestion_script:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile
+    profiles: ["setup"]
+    depends_on:
+      - log_ingestor
+
 volumes:
   es_data:
