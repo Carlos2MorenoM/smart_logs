@@ -14,12 +14,12 @@ services:
 
   # Log Ingestor
   log_ingestor:
-    build: ./log_ingestor
+    build: ./services/log_ingestor
     container_name: log_ingestor
     ports:
       - "8000:8000"
     depends_on:
-      - rabbitmq # RabbitMQ start first
+      - rabbitmq
     restart: always
 
   # ElasticSearch Service
@@ -32,7 +32,7 @@ services:
     ports:
       - "9200:9200"
     volumes:
-      - es_data:/usr/share/elasticsearch/data # Data persistence volume
+      - es_data:/usr/share/elasticsearch/data
     restart: always
 
   # Kibana service
@@ -49,13 +49,12 @@ services:
 
   # Log Processor
   log_processor:
-    build: ./log_processor
+    build: ./services/log_processor
     container_name: log_processor
     depends_on:
-      - rabbitmq # RabbitMQ start first
+      - rabbitmq
       - elasticsearch
     restart: always
 
-# Defines volume for data persistence
 volumes:
   es_data:
