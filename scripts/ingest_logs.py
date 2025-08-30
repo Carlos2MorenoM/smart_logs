@@ -2,6 +2,7 @@ import re
 import json
 import requests
 from datetime import datetime
+import hashlib
 
 # --- Configuration ---
 # Defines the location of the raw log file and the target API endpoint.
@@ -9,6 +10,16 @@ LOG_FILE_PATH = 'data/raw/Linux_2k.log'
 API_ENDPOINT = 'http://log_ingestor:8000/ingest'
 CURRENT_YEAR = datetime.now().year
 
+def generate_log_id(log_data):
+    """
+    Creates a hash SHA256 of the log data to be used as unique ID
+    Makes sure JSON is sorted so hash is the same always
+    """
+    # Convert dict in a JSON string, sorting keys
+    dhash = hashlib.sha256()
+    encoded_log = json.dumps(log_data, sort_keys=True).encode()
+    dhash.update(encoded_log)
+    return dhash.hexdigest()
 
 def parse_log_line(line):
     """
@@ -72,6 +83,9 @@ if __name__ == "__main__":
                 parsed_log = parse_log_line(line)
 
                 if parsed_log:
+                    log_id = generate_log_id(parsed_log)
+                    parsed_log['log_id'] = log_id
+
                     send_log_to_api(parsed_log)
 
     except FileNotFoundError:
