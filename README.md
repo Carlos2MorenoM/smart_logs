@@ -8,16 +8,16 @@ SmartLogs is a real-time log management platform designed to collect, process, s
 
 The application follows a decoupled microservices architecture where each component handles a specific responsibility. Communication between services is managed via a message queue.
 
+The data flow is as follows:
 
+`Ingestion Script` → `Log Ingestor (API)` → `RabbitMQ (Queue)` → `Log Processor` → `Elasticsearch` → `Kibana`
 
-### Technologies Used
+* **Log Ingestor:** A FastAPI-based API that receives logs via HTTP requests and publishes them to the message queue.
+* **RabbitMQ:** Acts as a message broker. It receives logs from the ingestor and holds them in a queue until they are consumed, decoupling the ingestion from the processing.
+* **Log Processor:** A service that consumes logs from the queue. It enriches the data, formats it, and runs an **anomaly detection model** before storing the final result in Elasticsearch.
+* **Elasticsearch:** A distributed search and analytics engine where all processed logs are stored.
+* **Kibana:** The visualization layer, used to explore logs and build dashboards on top of the data in Elasticsearch.
 
-* **Python:** The core language for the business logic in the ingestion and processing services.
-* **FastAPI:** A modern, high-performance web framework for the log ingestion API.
-* **RabbitMQ:** A message broker used to manage the log queue, ensuring reliable communication.
-* **Elasticsearch:** A distributed search and analytics engine optimized for storing and querying large volumes of log data.
-* **Kibana:** The data visualization interface for Elasticsearch, used to create dashboards and explore logs.
-* **Docker & Docker Compose:** Used to orchestrate and manage all application services in a local development environment.
 
 ### Getting Started
 
@@ -25,24 +25,23 @@ To get the application up and running, you only need to have [Docker and Docker 
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/smartlogs.git
-    cd smartlogs
+    git clone https://github.com/Carlos2MorenoM/smart_logs.git
+    cd smart_logs
     ```
-2.  **Run the services:**
+2.  **Run the core services:**
+    This command will build the images and start all the core components (API, processor, RabbitMQ, Elasticsearch, Kibana) in the background.
     ```bash
     docker-compose up --build -d
     ```
-    This command will build the images, start all services, and run them in the background.
 
 ### Usage
-
-#### 1. Send a Log
-
-Use the following `curl` command to send a test log to the ingestion API.
+#### 1. Ingest Sample Data
+To populate Elasticsearch with the provided sample logs (`Linux_2k.log`), run the ingestion script using its dedicated profile. This script will read the log file and send each line to the ingestion API.
 
 ```bash
-curl -X POST http://localhost:8000/ingest -H "Content-Type: application/json" -d '{"level": "info", "message": "Hello from SmartLogs!", "timestamp": "2025-08-30T10:00:00Z"}'
- ```
+docker-compose --profile setup up --build ingestion_script
+#### 1. Send a Log
+```
 
 #### 2. View Logs in Kibana
 Once the logs are processed, you can view them in Kibana.
@@ -53,14 +52,26 @@ In the Kibana application, go to **"Stack Management"** > **"Data Views"** and c
 
 Go to the "Discover" tab and select the `logs` data view to see your records.
 
-
+#### 3. Send a Single Log (Optional)
+You can also send a single test  log directly to the ingestion API using `curl`
+```bash
+curl -X POST http://localhost:8000/ingest -H "Content-Type: application/json" -d '{"message": "This is a test log message from curl"}'
+```
 
 ### Future Plans
 **Machine Learning Analysis:** Integrate machine learning models for anomaly detection and pattern analysis in the logs.
 
-**Custom User Interface:** Develop a custom graphical user interface using a web framework.
+**From Script to Service:** Evolve the ingest_logs.py script into a dedicated microservice (ingestion-service) that can listen to various sources, such as a Kafka topic or logs shipped by Filebeat.
 
-**Cloud Deployment & Scalability:** Migrate the architecture to a production environment using managed services like Elastic Cloud or AWS OpenSearch Service, and implement a container orchestration platform like Kubernetes to manage scalability and high availability.
+**Real Model Training:** Replace the previous rule-based logic in core/model.py with a genuine, trained anomaly detection model (e.g., using Isolation Forest or an LSTM autoencoder). This will involve creating a new training-pipeline component.
+
+**CI/CD Implementation:** Leverage the monorepo structure and Docker Compose to build a CI/CD pipeline (e.g., using GitHub Actions) that automatically tests and deploys changes to the services.
+
+**Observability:** Introduce centralized logging, metrics (Prometheus), and tracing (Jaeger) for the microservices to monitor their health and performance in production.
+
+**Custom User Interface:** Develop a custom graphical user interface using a modern web framework to provide a more tailored user experience.
+
+**Cloud Deployment & Scalability:** Migrate the architecture to a production environment using managed services (e.g., Elastic Cloud, AWS OpenSearch) and implement a container orchestrator like Kubernetes to manage scalability and high availability.
 
 ### Author
 Carlos Moreno and Gemini :)
