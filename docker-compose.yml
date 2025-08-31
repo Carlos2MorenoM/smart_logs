@@ -1,16 +1,18 @@
-version: '3.8'
-
 services:
   # RabbitMQ
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: rabbitmq
     ports:
-      # Port AMQP
       - "5672:5672"
-      # Port web interface
       - "15672:15672"
     restart: always
+    # This healthcheck waits for RabbitMQ's service to be fully operational.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Log Ingestor
   log_ingestor:
@@ -19,7 +21,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
     restart: always
 
   # ElasticSearch Service
@@ -34,6 +37,12 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     restart: always
+    # This healthcheck waits for Elasticsearch's cluster to be available.
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # Kibana service
   kibana:
@@ -41,8 +50,10 @@ services:
     container_name: kibana
     ports:
       - "5601:5601"
+    # Kibana will now wait for Elasticsearch to be healthy.
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     restart: always
@@ -51,19 +62,24 @@ services:
   log_processor:
     build: ./services/log_processor
     container_name: log_processor
+    # The processor waits for both its dependencies to be fully ready.
     depends_on:
-      - rabbitmq
-      - elasticsearch
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     restart: always
 
-  # Ingestion script
+  # Ingestion script (run on-demand)
   ingestion_script:
     build:
       context: .
       dockerfile: scripts/Dockerfile
+    # This profile means the service won't start automatically with 'docker-compose up'.
     profiles: ["setup"]
     depends_on:
-      - log_ingestor
+      log_ingestor:
+        condition: service_started
 
 volumes:
   es_data:

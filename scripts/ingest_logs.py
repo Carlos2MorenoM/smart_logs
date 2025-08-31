@@ -28,7 +28,8 @@ def parse_log_line(line):
     """
     log_pattern = re.compile(
         r'^(?P<month>\w{3})\s+(?P<day>\d{1,2})\s+(?P<time>\d{2}:\d{2}:\d{2})\s+'
-        r'(?P<hostname>\S+)\s+(?P<component>[\w\d\-_.]+)(\[\d+\])?:\s+'
+        r'(?P<hostname>\S+)\s+'
+        r'(?P<component>.+?):\s+'
         r'(?P<message>.*)$'
     )
 
@@ -76,21 +77,37 @@ def send_log_to_api(log_json):
 # and sends the structured data to the API.
 if __name__ == "__main__":
     print(f"🚀 Starting log ingestion from '{LOG_FILE_PATH}'...")
+    line_count = 0
+    parsed_count = 0
+    skipped_count = 0
 
     try:
         with open(LOG_FILE_PATH, 'r') as file:
             for line in file:
+                line_count += 1
+                if not line.strip():
+                    skipped_count += 1
+                    continue
+
                 parsed_log = parse_log_line(line)
 
                 if parsed_log:
+                    parsed_count += 1
                     log_id = generate_log_id(parsed_log)
                     parsed_log['log_id'] = log_id
-
                     send_log_to_api(parsed_log)
+                else:
+                    skipped_count += 1
+                    print(f"⚠️  Line skipped (format mismatch): {line.strip()}")
 
     except FileNotFoundError:
         print(f"🚨 Error: Log file not found at '{LOG_FILE_PATH}'")
     except Exception as e:
         print(f"🚨 An unexpected error occurred: {e}")
 
+    print("\n" + "="*30)
     print("🏁 Ingestion process finished.")
+    print(f"    - Total lines read: {line_count}")
+    print(f"    - Logs parsed and sent: {parsed_count}")
+    print(f"    - Lines skipped: {skipped_count}")
+    print("="*30)
