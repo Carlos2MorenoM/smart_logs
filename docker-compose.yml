@@ -1,5 +1,4 @@
 services:
-  # RabbitMQ
   rabbitmq:
     image: rabbitmq:3.12-management
     container_name: rabbitmq
@@ -7,14 +6,12 @@ services:
       - "5672:5672"
       - "15672:15672"
     restart: always
-    # This healthcheck waits for RabbitMQ's service to be fully operational.
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Log Ingestor
   log_ingestor:
     build: ./services/log_ingestor
     container_name: log_ingestor
@@ -25,7 +22,6 @@ services:
         condition: service_healthy
     restart: always
 
-  # ElasticSearch Service
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: elasticsearch
@@ -37,20 +33,17 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     restart: always
-    # This healthcheck waits for Elasticsearch's cluster to be available.
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # Kibana service
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
     container_name: kibana
     ports:
       - "5601:5601"
-    # Kibana will now wait for Elasticsearch to be healthy.
     depends_on:
       elasticsearch:
         condition: service_healthy
@@ -58,24 +51,48 @@ services:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
     restart: always
 
-  # Log Processor
+  anomaly_detector:
+    build: ./services/anomaly_detector
+    container_name: anomaly_detector
+    ports:
+      - "8001:8001"
+    # Mounts the volume where the trained model is stored
+    volumes:
+      - model_artifacts:/model
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
+
   log_processor:
     build: ./services/log_processor
     container_name: log_processor
-    # The processor waits for both its dependencies to be fully ready.
+    # NOW DEPENDS ON THE NEW ANOMALY_DETECTOR SERVICE
     depends_on:
       rabbitmq:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      anomaly_detector:
+        condition: service_healthy
     restart: always
 
-  # Ingestion script (run on-demand)
+  model_trainer:
+    build: ./services/anomaly_detector
+    # Overrides the default command to run the training script instead of the API
+    command: python train.py
+    # Mounts volumes to read raw data and write the model artifact
+    volumes:
+      - ./data:/data
+      - model_artifacts:/model
+    profiles: ["setup"]
+
   ingestion_script:
     build:
       context: .
       dockerfile: scripts/Dockerfile
-    # This profile means the service won't start automatically with 'docker-compose up'.
     profiles: ["setup"]
     depends_on:
       log_ingestor:
@@ -83,3 +100,5 @@ services:
 
 volumes:
   es_data:
+  # Volume to persist and share the trained model artifact
+  model_artifacts:
