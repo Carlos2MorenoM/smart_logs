@@ -1,52 +1,69 @@
+# services/log_processor/src/processor.py
+
 import pika
 import json
+import time
+import requests
 from elasticsearch import Elasticsearch
 
-# Configure and connect Elasticsearch
-def connect_to_es():
+# --- Configuration ---
+ANOMALY_DETECTOR_URL = "http://anomaly_detector:8001/predict"
+
+
+def get_anomaly_prediction(log_message: str) -> bool:
+    """
+    Calls the anomaly_detector microservice to get a prediction.
+    """
     try:
-        es = Elasticsearch(
-            ['http://elasticsearch:9200'],
-            verify_certs=False,
-        )
-        return es
-    except Exception as e:
-        print(f"Error connecting to Elasticsearch: {e}")
-        return None
+        response = requests.post(ANOMALY_DETECTOR_URL, json={"message": log_message}, timeout=2)
+        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+        return response.json().get("is_anomaly", False)
+    except requests.exceptions.RequestException as e:
+        print(f"🚨 Could not connect to anomaly detector: {e}")
+        # Failsafe: if the model service is down, we don't classify as an anomaly.
+        return False
 
-# Define processor function
-def callback(ch, method, properties, body):
+
+def process_log(log_data: dict, es_client: Elasticsearch):
+    """
+    Processes a single log: calls the ML service and stores result in Elasticsearch.
+    """
     try:
-        log_entry = json.loads(body)
-        print(f"✅ New log received and processed: {log_entry}")
+        log_message = log_data.get("message", "")
 
-        document_id = log_entry.pop('log_id', None)
+        # Call the dedicated microservice for prediction
+        is_anomaly = get_anomaly_prediction(log_message)
 
-        es_client.index(index="logs", id=document_id, document=log_entry)
+        # Enrich the log data with the prediction
+        log_data['is_anomaly'] = is_anomaly
+        if is_anomaly:
+            log_data['tags'] = ['anomaly']
 
-        print("📦 Log stored on Elasticsearch")
+        print(f"-> Processing log {log_data.get('log_id', 'N/A')}. Anomaly: {is_anomaly}")
 
-        # Notify RabbitMQ message was processed
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        # Store the enriched log in Elasticsearch
+        es_client.index(index="smartlogs", document=log_data)
+
     except Exception as e:
-        print(f"❌ Error processing log message: {e}")
+        print(f"🚨 Error processing log: {e}")
 
-if __name__ == '__main__':
-    # Connect Elasticsearch
-    es_client = connect_to_es()
-    if es_client is None:
-        exit(1)
 
-    # Connect RabbitMQ
+def main():
+    es = Elasticsearch("http://elasticsearch:9200")
     connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
     channel = connection.channel()
-
-    # Keeping sure queue exists
     channel.queue_declare(queue='logs', durable=True)
 
-    # Configure the consumer
-    channel.basic_consume(queue='logs', on_message_callback=callback, auto_ack=False)
+    def callback(ch, method, properties, body):
+        log_payload = json.loads(body)
+        process_log(log_payload, es)
+        ch.basic_ack(delivery_tag=method.delivery_tag)
 
-    print(" [*] Waiting for logs. Exit using CTRL+C")
-    # Consume messages
+    channel.basic_consume(queue='logs', on_message_callback=callback)
+    print(' [*] Waiting for logs. To exit press CTRL+C')
     channel.start_consuming()
+
+
+if __name__ == '__main__':
+    time.sleep(15)
+    main()
